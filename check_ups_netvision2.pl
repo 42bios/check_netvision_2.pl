@@ -206,49 +206,49 @@ if ( ! defined($response = $session->get_request(@snmpoids)) ) {
 $remTime = $response->{$upsRemainingtime};
 if ($remTime < $time_min) {
   $state = 'CRITICAL';
-  print " remaining time under $time_min (currently at $remTime)";
+  print " remaining time under $time_min (currently at $remTime) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify battery temperature
 $tempBattery = $response->{$upsBatteryTemperature};
 if ($tempBattery > $temp_max) {
   $state = 'CRITICAL';
-  print " battery temperature above $temp_max (currently at $tempBattery)";
+  print " battery temperature above $temp_max (currently at $tempBattery) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify EMD temperature
 $tempEMD = $response->{$emdSatatusTemperature};
 if ($tempEMD > ($temp_max * 10)) {
   $state = 'CRITICAL';
-  print " EMD temperature above $temp_max (currently at $tempEMD)";
+  print " EMD temperature above $temp_max (currently at $tempEMD) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify voltage
 $voltage = Math::BigInt->new($response->{$upsOutputVoltage});
 if ($voltage < $voltage_min) {
   $state = 'CRITICAL';
-  print " output voltage below $voltage_min (currently at $voltage)";
+  print " output voltage below $voltage_min (currently at $voltage) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify load
 $load = Math::BigInt->new($response->{$upsOutputPercentLoad});
 if ($load > $load_max) {
   $state = 'CRITICAL';
-  print " maximum load reached (currently at $load)";
+  print " maximum load reached (currently at $load) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify battery capacity 
 $batteryCapacity = Math::BigInt->new($response->{$upsBatteryCapacity});
 if ($batteryCapacity < $batteryCapacity_min) {
   $state = 'CRITICAL';
-  print " battery capacity is below $batteryCapacity_min% (currently at $batteryCapacity%)";
+  print " battery capacity is below $batteryCapacity_min% (currently at $batteryCapacity%) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify alarms
 $alarms = Math::BigInt->new($response->{$upsAlarmsPresent});
 if ($alarms > 0) {
   $state = 'CRITICAL';
-  print " there are alarms on the UPS - clear them!"
+  print " there are alarms on the UPS - clear them! |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 my $source = $upsOutputSources{$response->{$upsOutputSource}};
@@ -518,6 +518,3 @@ sub process_arguments() {
   }
 }
 ## End validation
-
-
-
