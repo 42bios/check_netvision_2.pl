@@ -206,7 +206,7 @@ if ( ! defined($response = $session->get_request(@snmpoids)) ) {
 $remTime = $response->{$upsRemainingtime};
 if ($remTime < $time_min) {
   $state = 'CRITICAL';
-  print " remaining time under $time_min (currently at $remTime) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " remaining time under $time_min (currently at $remTime) battery capacity (currently at $batteryCapacity%)  |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify battery temperature
@@ -241,7 +241,7 @@ if ($load > $load_max) {
 $batteryCapacity = Math::BigInt->new($response->{$upsBatteryCapacity});
 if ($batteryCapacity < $batteryCapacity_min) {
   $state = 'CRITICAL';
-  print " battery capacity is below $batteryCapacity_min% (currently at $batteryCapacity%) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " battery capacity is below $batteryCapacity_min% (currently at $batteryCapacity%)  remaining time: $remTime |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
 }
 
 # verify alarms
