@@ -36,6 +36,12 @@
 ## 2019-08-09: Manuel Mahr  manuel (at) it-mahr.com
 #	- added remaining time
 #   - added battery capacity
+## 2019-11-21: Manuel Mahr
+#	- added on battery time
+#   - added input voltage
+#   - added input current
+#   - added output current
+#   - added output in kva
 
 
 use POSIX;
@@ -68,19 +74,23 @@ my $countComponents = 0;
 my $state = 'OK';
 my $answer = "";
 my $tmp = "";
-
 my $tempBattery;
 my $tempEMD;
-my $voltage;
-my $voltage_min = 200;
+my $voltageOUT;
+my $voltageOUT_min = 200;
+my $voltageIN;
+my $voltageIN_min = 200;
+my $currentIN;
+my $currentOUT;
+my $OnBatteryTime;
+my $outputkva;
+my $source;
 my $load;
 my $load_max = 95;
 my $temp_max = 30;
 my $alarms;
-
 my $remTime;
 my $time_min = 10;
-
 my $batteryCapacity;
 my $batteryCapacity_min = 80;
 
@@ -145,12 +155,18 @@ my %upsComponents = (
 
 my $emdSatatusTemperature = '1.3.6.1.4.1.4555.1.1.1.1.11.1.0';    # .emdSatatus.emdSatatusTemperature
 my $upsBatteryTemperature = '1.3.6.1.4.1.4555.1.1.1.1.2.6.0';     # .upsBattery.upsBatteryTemperature
+my $upsInputVoltage       = '1.3.6.1.4.1.4555.1.1.1.1.3.3.1.2.1';   # .upsInput.upsInputTable.upsInputEntry.upsInputVoltage (by factor 10)
 my $upsOutputVoltage      = '1.3.6.1.4.1.4555.1.1.1.1.4.4.1.2.1'; # .upsOutput.upsOutputTable.upsOutputEntry.upsOutputVoltage (by factor 10)
+my $upsInputCurrent       = '1.3.6.1.4.1.4555.1.1.1.1.3.3.1.3.1';   # .upsInputCurrent (output in amp)
+my $upsOutputCurrent      = '1.3.6.1.4.1.4555.1.1.1.1.4.4.1.3.1';   # .upsOutputCurrent (output in amp)
 my $upsOutputPercentLoad  = '1.3.6.1.4.1.4555.1.1.1.1.4.4.1.4.1'; # .upsOutput.upsOutputTable.upsOutputEntry.upsOutputPercentLoad (output load rate in %)
 my $upsOutputSource       = '1.3.6.1.4.1.4555.1.1.1.1.4.1.0';     # .upsOutput.upsOutputSource
 my $upsAlarmsPresent      = '1.3.6.1.4.1.4555.1.1.1.1.6.1.0';     # .upsAlarm.upsAlarmsPresent
 my $upsRemainingtime	  = '1.3.6.1.4.1.4555.1.1.1.1.2.3.0';	  # .upsRemainingtime (output in min)
 my $upsBatteryCapacity	  = '1.3.6.1.4.1.4555.1.1.1.1.2.4.0'; 	  # .upsBatteryCapacity (output in %)
+my $upsOnBatteryTime	  = '1.3.6.1.4.1.4555.1.1.1.1.2.2';       # .upsOnBatteryTime (output in sec)
+my $upsOutputKva		  = '1.3.6.1.4.1.4555.1.1.1.1.4.4.1.5.1';   # .upsOutputKva (output in Kva)
+
 ## validate arguments
 
 process_arguments();
@@ -187,12 +203,17 @@ for my $component (keys %upsComponents) {
 
 push(@snmpoids, $emdSatatusTemperature);
 push(@snmpoids, $upsBatteryTemperature);
+push(@snmpoids, $upsInputVoltage);
 push(@snmpoids, $upsOutputVoltage);
+push(@snmpoids, $upsInputCurrent);
+push(@snmpoids, $upsOutputCurrent);
 push(@snmpoids, $upsOutputPercentLoad);
 push(@snmpoids, $upsOutputSource);
 push(@snmpoids, $upsAlarmsPresent);
 push(@snmpoids, $upsRemainingtime);
 push(@snmpoids, $upsBatteryCapacity);
+push(@snmpoids, $upsOnBatteryTime);
+push(@snmpoids, $upsOutputKva);
 
 if ( ! defined($response = $session->get_request(@snmpoids)) ) {
   $answer=$session->error;
@@ -206,57 +227,73 @@ if ( ! defined($response = $session->get_request(@snmpoids)) ) {
 $remTime = $response->{$upsRemainingtime};
 if ($remTime < $time_min) {
   $state = 'CRITICAL';
-  print " remaining time under $time_min (currently at $remTime min) battery capacity (currently at $batteryCapacity%)  |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " remaining time under $time_min (currently at $remTime min - on battery since $OnBatteryTime seconds) battery capacity (currently at $batteryCapacity%)  |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
 
 # verify battery temperature
 $tempBattery = $response->{$upsBatteryTemperature};
 if ($tempBattery > $temp_max) {
   $state = 'CRITICAL';
-  print " battery temperature above $temp_max (currently at $tempBattery) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " battery temperature above $temp_max (currently at $tempBattery) |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
 
 # verify EMD temperature
 $tempEMD = $response->{$emdSatatusTemperature};
 if ($tempEMD > ($temp_max * 10)) {
   $state = 'CRITICAL';
-  print " EMD temperature above $temp_max (currently at $tempEMD) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " EMD temperature above $temp_max (currently at $tempEMD) |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
 
 # verify voltage
-$voltage = Math::BigInt->new($response->{$upsOutputVoltage});
-if ($voltage < $voltage_min) {
+$voltageIN = Math::BigInt->new($response->{$upsInputVoltage});
+if ($voltageIN < $voltageIN_min) {
   $state = 'CRITICAL';
-  print " output voltage below $voltage_min (currently at $voltage) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " output voltage below $voltageIN_min (currently at $voltageIN) |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
+
+$voltageOUT = Math::BigInt->new($response->{$upsOutputVoltage});
+if ($voltageOUT < $voltageOUT_min) {
+  $state = 'CRITICAL';
+  print " output voltage below $voltageOUT_min (currently at $voltageOUT) |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
+}
+
+# verify current
+$currentIN = Math::BigInt->new($response->{$upsInputCurrent});
+$currentOUT = Math::BigInt->new($response->{$upsOutputCurrent});
 
 # verify load
 $load = Math::BigInt->new($response->{$upsOutputPercentLoad});
 if ($load > $load_max) {
   $state = 'CRITICAL';
-  print " maximum load reached (currently at $load) |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " maximum load reached (currently at $load) |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
 
 # verify battery capacity 
 $batteryCapacity = Math::BigInt->new($response->{$upsBatteryCapacity});
 if ($batteryCapacity < $batteryCapacity_min) {
   $state = 'CRITICAL';
-  print " battery capacity is below $batteryCapacity_min% (currently at $batteryCapacity%)  remaining time: $remTime min |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " battery capacity is below $batteryCapacity_min% (currently at $batteryCapacity%)  remaining time: $remTime min - on battery since $OnBatteryTime seconds |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
+
+# verify on battery time
+$OnBatteryTime = $response->{$upsOnBatteryTime};
+
+# verify kva output
+$outputkva = Math::BigInt->new($response->{$upsOutputKva});
 
 # verify alarms
 $alarms = Math::BigInt->new($response->{$upsAlarmsPresent});
 if ($alarms > 0) {
   $state = 'CRITICAL';
-  print " there are alarms on the UPS - clear them! |load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " there are alarms on the UPS - clear them! |load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 }
 
-my $source = $upsOutputSources{$response->{$upsOutputSource}};
+$source = $upsOutputSources{$response->{$upsOutputSource}};
 
 
 # exit
 if ( ! defined $debug && $state eq 'OK') {
-  print " overall system state OK $source|load=$load tempbattery=$tempBattery remaining_time=$remTime capacity=$batteryCapacity tempemd=$tempEMD voltage=$voltage\n";
+  print " overall system state OK $source|load=$load kva=$outputkva tempbattery=$tempBattery remaining_time=$remTime onbatterytime=$OnBatteryTime capacity=$batteryCapacity tempemd=$tempEMD currentIN=$currentIN currentOUT=$currentOUT voltageIN=$voltageIN voltageOUT=$voltageOUT\n";
 } else {
   print " $source\n";
 }
@@ -367,7 +404,7 @@ sub process_arguments() {
     "d"   => \$debug,        "debug"          => \$debug,
     "x=s" => \$exclude,      "exclude=s"      => \$exclude,
     "w=s" => \$warnings,     "warnings=s"     => \$warnings,
-    "m=i" => \$voltage_min,  "min_volt=i"     => \$voltage_min,
+    "m=i" => \$voltageOUT_min,  "min_volt=i"     => \$voltageOUT_min,
     "l=i" => \$load_max,     "max_load=i"     => \$load_max,
                              "temperature=i"  => \$temp_max,
     "v=i" => \$snmp_version, "snmp_version=i" => \$snmp_version,
